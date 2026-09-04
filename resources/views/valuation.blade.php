@@ -11,15 +11,15 @@
                     Value a <span class="text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-orange-400">Geo Domain</span>
                 </h1>
                 <p class="mt-4 text-lg text-gray-400">
-                    Enter a domain and we'll analyze the <strong class="text-white">city</strong> and <strong class="text-white">keyword</strong> inside it against our past sales data.
+                    Enter a domain and we'll analyze the <strong class="text-white">city/state</strong> and <strong class="text-white">keyword</strong> inside it against our past sales data.
                 </p>
 
                 <!-- Alert: geo domains only -->
                 <div class="mt-6 bg-yellow-900/20 border border-yellow-800/40 rounded-xl px-5 py-3 flex items-start justify-center gap-3 text-left">
                     <span class="text-yellow-400 mt-0.5">⚠️</span>
                     <p class="text-sm text-yellow-200">
-                        This tool <strong>ONLY analyzes GEO domains</strong> (a city + keyword + TLD, e.g. <span class="font-mono">losangeleshomes.com</span>).
-                        The result is an <strong>estimate</strong> based on city population and how many times the keyword has sold in our data. It is <strong>NOT guaranteed</strong>.
+                        This tool <strong>ONLY analyzes GEO domains</strong> (a city or state + keyword + TLD, e.g. <span class="font-mono">losangeleshomes.com</span> or <span class="font-mono">floridahousesales.com</span>).
+                        The result is an <strong>estimate</strong> based on population and how many times the keyword has sold in our data. It is <strong>NOT guaranteed</strong>.
                     </p>
                 </div>
 
@@ -56,7 +56,7 @@
                     <div>
                         <h2 class="text-2xl font-bold text-white">{{ $result['domain_name'] }}</h2>
                         <p class="text-sm text-gray-400 mt-1">
-                            Detected as a <span class="text-yellow-400 font-semibold">GEO domain</span> — parsed correctly.
+                            Detected as a <span class="text-yellow-400 font-semibold">GEO domain</span> ({{ ($result['geo_type'] ?? 'city') === 'state' ? 'state' : 'city' }}) — parsed correctly.
                         </p>
                     </div>
                     <div class="text-right">
@@ -67,13 +67,13 @@
 
                 <!-- The 3 analysis factors -->
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 p-6">
-                    <!-- CITY -->
+                    <!-- LOCATION (city or state) -->
                     <div class="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
                         <p class="text-xs text-gray-400 uppercase tracking-wider flex items-center">
                             <svg class="h-3.5 w-3.5 mr-1 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L4.414 9H17a1 1 0 110 2H4.414l5.293 5.293a1 1 0 010 1.414z" clip-rule="evenodd"/></svg>
-                            The City
+                            {{ ($result['geo_type'] ?? 'city') === 'state' ? 'The State' : 'The City' }}
                         </p>
-                        <p class="text-lg font-bold text-white mt-2">{{ $result['city'] }}</p>
+                        <p class="text-lg font-bold text-white mt-2">{{ $result['location'] ?? $result['city'] }}</p>
                         <p class="text-sm {{ $result['population'] > 0 ? 'text-gray-300' : 'text-gray-500' }}">
                             {{ $result['city_rating'] }}
                             @if($result['population'] > 0)
@@ -81,8 +81,8 @@
                             @endif
                         </p>
                         <div class="mt-3 pt-3 border-t border-gray-700">
-                            <p class="text-xs text-gray-400">Past sales in this city:</p>
-                            <p class="text-xl font-bold text-white">{{ $result['city_sales'] }}</p>
+                            <p class="text-xs text-gray-400">Past sales for this {{ ($result['geo_type'] ?? 'city') === 'state' ? 'state' : 'city' }}:</p>
+                            <p class="text-xl font-bold text-white">{{ $result['location_sales'] ?? $result['city_sales'] ?? 0 }}</p>
                         </div>
                     </div>
 
@@ -107,7 +107,7 @@
                             Exact Past Sales
                         </p>
                         <p class="text-3xl font-bold text-white mt-2">{{ $result['exact_matches'] }}</p>
-                        <p class="text-sm text-gray-400 mt-1">sales of this exact city + keyword combo</p>
+                        <p class="text-sm text-gray-400 mt-1">sales of this exact {{ ($result['geo_type'] ?? 'city') === 'state' ? 'state' : 'city' }} + keyword combo</p>
                         <div class="mt-3 pt-3 border-t border-gray-700">
                             <p class="text-xs text-gray-400">TLD:</p>
                             <p class="text-lg font-bold text-white">{{ $result['tld'] }}</p>
@@ -127,7 +127,7 @@
                     </div>
                     @else
                     <div class="bg-gray-800/40 border border-gray-700 rounded-xl p-5">
-                        <p class="text-sm text-gray-400">Could not estimate a value yet — no comparable city + keyword sales in our data.</p>
+                        <p class="text-sm text-gray-400">Could not estimate a value yet — no comparable {{ ($result['geo_type'] ?? 'city') === 'state' ? 'state' : 'city' }} + keyword sales in our data.</p>
                     </div>
                     @endif
 
@@ -138,7 +138,7 @@
                             <h3 class="text-sm font-semibold text-gray-300">Domains in our past data</h3>
                             <span class="text-xs text-gray-500">{{ count($result['comparables']) }} matching sale(s)</span>
                         </div>
-                        <p class="text-xs text-gray-500 mt-1 mb-3">These are the actual domains we have on record that match this city and/or keyword.</p>
+                        <p class="text-xs text-gray-500 mt-1 mb-3">These are the actual domains we have on record that match this {{ ($result['geo_type'] ?? 'city') === 'state' ? 'state' : 'city' }} and/or keyword.</p>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             @foreach($result['comparables'] as $cmp)
                             <div class="flex items-center justify-between bg-gray-900/60 border border-gray-800 rounded-lg px-3 py-2">
@@ -173,15 +173,15 @@
             <div class="bg-gray-900 rounded-2xl border border-gray-800 p-8 text-center">
                 <div class="text-4xl mb-4">🤔</div>
                 <h3 class="text-xl font-bold text-white">{{ $result['message'] }}</h3>
-                @if(!empty($result['city']) && !empty($result['keyword']))
+                @if(!empty($result['location']) && !empty($result['keyword']))
                 <div class="mt-6 bg-gray-800/50 rounded-xl p-4 border border-gray-700">
                     <p class="text-sm text-gray-400">We parsed:</p>
                     <div class="flex items-center justify-center gap-4 mt-2 flex-wrap">
-                        <span class="px-3 py-1 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-xs font-semibold text-yellow-400">City: {{ $result['city'] }}</span>
+                        <span class="px-3 py-1 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-xs font-semibold text-yellow-400">{{ ($result['geo_type'] ?? 'city') === 'state' ? 'State' : 'City' }}: {{ $result['location'] ?? $result['city'] }}</span>
                         <span class="px-3 py-1 rounded-lg bg-purple-500/10 border border-purple-500/30 text-xs font-semibold text-purple-400">Keyword: {{ $result['keyword'] }}</span>
                         <span class="px-3 py-1 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-xs font-semibold text-indigo-400">TLD: {{ $result['tld'] }}</span>
                     </div>
-                    <p class="text-xs text-gray-500 mt-3">Add sales for this city/keyword to get an analysis.</p>
+                    <p class="text-xs text-gray-500 mt-3">Add sales for this {{ ($result['geo_type'] ?? 'city') === 'state' ? 'state' : 'city' }}/keyword to get an analysis.</p>
                 </div>
                 @endif
             </div>

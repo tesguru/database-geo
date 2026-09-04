@@ -20,17 +20,25 @@
 
             <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
                 <div>
-                    <h1 class="text-3xl font-bold text-white">City Populations</h1>
+                    <h1 class="text-3xl font-bold text-white">Population Data</h1>
                     <p class="text-gray-400 mt-1">
-                        Add city, state and population. The valuation tool uses these to judge if a city is "big" (more buyers = higher chance to sell).
+                        Add city/state populations. The valuation tool uses these to judge demand.
                     </p>
                 </div>
-                <form method="POST" action="{{ route('admin.populations.seed') }}">
-                    @csrf
-                    <button class="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-medium">
-                        Seed Sample Populations
-                    </button>
-                </form>
+                <div class="flex gap-2">
+                    <form method="POST" action="{{ route('admin.populations.seed') }}">
+                        @csrf
+                        <button class="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-medium">
+                            Seed Sample Cities
+                        </button>
+                    </form>
+                    <form method="POST" action="{{ route('admin.populations.seed-states') }}">
+                        @csrf
+                        <button class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm font-medium">
+                            Seed US + Int'l States
+                        </button>
+                    </form>
+                </div>
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">

@@ -11,15 +11,6 @@ class DomainValuationService
         $this->clickhouse = $clickhouse;
     }
 
-    /**
-     * Value a geo-domain by parsing the domain itself.
-     *
-     * Flow:
-     *  1. Parse domain -> city + keyword + tld
-     *  2. Check PAST SALES data: how many times city sold, how many times keyword sold
-     *  3. Check CITY POPULATION table: the city's population
-     *  4. Score: past sales demand + population (big city boosts chance)
-     */
     public function valueDomain(string $domainName): array
     {
         if (!$this->clickhouse->isConnected()) {
@@ -28,36 +19,36 @@ class DomainValuationService
 
         $parsed = $this->parseDomain($domainName);
         if (!$parsed) {
-            return $this->result(false, 'This tool only analyzes GEO domains (a city + keyword + TLD). Please enter a domain like "losangeleshomes.com".');
+            return $this->result(false, 'This tool only analyzes GEO domains (a city/state + keyword + TLD). Please enter a domain like "losangeleshomes.com" or "floridahousesales.com".');
         }
 
-        $city = $parsed['city'];          // display name, e.g. "Los Angeles"
-        $cityKey = $parsed['cityKey'];    // normalized, e.g. "losangeles"
+        $location = $parsed['location'];
+        $locationKey = $parsed['locationKey'];
         $keyword = $parsed['keyword'];
         $tld = $parsed['tld'];
+        $geoType = $parsed['geo_type'];
 
-        // ---- 1. PAST SALES DATA ----
-        $citySales = $this->citySalesCount($cityKey);
+        $locationSales = $this->locationSalesCount($locationKey, $geoType);
         $keywordSales = $this->keywordSalesCount($keyword);
-        $exactMatches = $this->exactMatchCount($cityKey, $keyword);
+        $exactMatches = $this->exactMatchCount($locationKey, $keyword, $geoType);
 
-        // ---- 2. CITY POPULATION TABLE ----
-        $popRow = $this->cityPopulation($cityKey);
+        $popRow = $this->locationPopulation($locationKey, $geoType);
         $population = $popRow['population'];
 
-        $hasSalesData = $citySales > 0 || $keywordSales > 0;
+        $hasSalesData = $locationSales > 0 || $keywordSales > 0;
         $hasPopulation = $population > 0;
 
         if (!$hasSalesData && !$hasPopulation) {
             return $this->result(
                 false,
-                'No data yet. We have no past sales for this city/keyword and no population record. Add past sales and city population to get an analysis.',
+                'No data yet. We have no past sales for this location/keyword and no population record. Add past sales and population data to get an analysis.',
                 [
                     'domain_name' => $domainName,
-                    'city' => $city,
+                    'location' => $location,
+                    'geo_type' => $geoType,
                     'keyword' => $keyword,
                     'tld' => $tld,
-                    'city_sales' => 0,
+                    'location_sales' => 0,
                     'keyword_sales' => 0,
                     'exact_matches' => 0,
                     'population' => 0,
@@ -66,38 +57,33 @@ class DomainValuationService
             );
         }
 
-        // ---- 3. SCORING ----
-        // Past sales demand (how many times it sold)
-        $salesScore = $this->salesScore($citySales, $keywordSales);
-
-        // Population score (big city = more buyers = higher chance to sell)
-        $popScore = $this->populationScore($population);
-
-        // Exact match bonus
+        $salesScore = $this->salesScore($locationSales, $keywordSales);
+        $popScore = $this->populationScore($population, $geoType);
         $exactBonus = min(20, $exactMatches * 7);
-
         $chance = min(96, $salesScore + $popScore + $exactBonus);
 
-        // Estimated value from comparable past sales (city + keyword)
-        $estimate = $this->estimateFromComparables($cityKey, $keyword);
+        $estimate = $this->estimateFromComparables($locationKey, $keyword, $geoType);
+        $comparables = $this->comparableSales($locationKey, $keyword, $geoType);
 
-        // Actual domains seen in past data for this city/keyword
-        $comparables = $this->comparableSales($cityKey, $keyword);
+        $rating = $geoType === 'state'
+            ? $this->stateRatingLabel($population, $hasPopulation)
+            : $this->cityRatingLabel($population, $hasPopulation);
 
         return $this->result(
             true,
             'Analysis complete.',
             [
                 'domain_name' => $domainName,
-                'city' => $city,
+                'location' => $location,
+                'geo_type' => $geoType,
                 'keyword' => $keyword,
                 'tld' => $tld,
-                'city_sales' => $citySales,
+                'location_sales' => $locationSales,
                 'keyword_sales' => $keywordSales,
                 'exact_matches' => $exactMatches,
                 'population' => $population,
                 'has_population' => $hasPopulation,
-                'city_rating' => $this->cityRatingLabel($population, $hasPopulation),
+                'city_rating' => $rating,
                 'keyword_demand' => $this->keywordDemandLabel($keywordSales),
                 'chance' => $chance,
                 'estimated_value' => round($estimate['median'], 0),
@@ -105,7 +91,7 @@ class DomainValuationService
                 'estimate_high' => round($estimate['high'], 0) > 0 ? round($estimate['high'], 0) : null,
                 'has_estimate' => $estimate['median'] > 0,
                 'comparables' => $comparables,
-                'note' => $this->buildNote($city, $keyword, $citySales, $keywordSales, $exactMatches, $population, $hasPopulation),
+                'note' => $this->buildNote($location, $keyword, $locationSales, $keywordSales, $exactMatches, $population, $hasPopulation, $geoType),
             ]
         );
     }
@@ -135,25 +121,46 @@ class DomainValuationService
         $base = preg_replace('/[^a-z]/', '', $base);
         if ($base === '') return null;
 
-        // Build known city lookup from BOTH domain_sales.city and city_population.city
         $knownCities = $this->knownCityLookup();
-        if (empty($knownCities)) return null;
+        $knownStates = $this->knownStateLookup();
 
         $best = null;
         $len = strlen($base);
-        for ($i = 1; $i < $len; $i++) {
-            $cityPart = substr($base, 0, $i);
-            $keywordPart = substr($base, $i);
-            if (strlen($cityPart) < 3 || strlen($keywordPart) < 3) continue;
 
-            if (isset($knownCities[$cityPart])) {
-                $cityDisplay = $knownCities[$cityPart];
-                $keywordSales = $this->keywordSalesCount($keywordPart);
-                $score = 60 + strlen($cityPart);
+        for ($i = 1; $i < $len; $i++) {
+            $locPart = substr($base, 0, $i);
+            $kwPart = substr($base, $i);
+            if (strlen($locPart) < 2 || strlen($kwPart) < 3) continue;
+
+            if (isset($knownCities[$locPart])) {
+                $keywordSales = $this->keywordSalesCount($kwPart);
+                $score = 60 + strlen($locPart);
                 if ($keywordSales > 0) $score += 30;
 
                 if ($best === null || $score > $best['score']) {
-                    $best = ['city' => $cityDisplay, 'cityKey' => $cityPart, 'keyword' => $keywordPart, 'score' => $score];
+                    $best = [
+                        'location' => $knownCities[$locPart],
+                        'locationKey' => $locPart,
+                        'keyword' => $kwPart,
+                        'score' => $score,
+                        'geo_type' => 'city',
+                    ];
+                }
+            }
+
+            if (isset($knownStates[$locPart])) {
+                $keywordSales = $this->keywordSalesCount($kwPart);
+                $score = 70 + strlen($locPart);
+                if ($keywordSales > 0) $score += 30;
+
+                if ($best === null || $score > $best['score']) {
+                    $best = [
+                        'location' => $knownStates[$locPart],
+                        'locationKey' => $locPart,
+                        'keyword' => $kwPart,
+                        'score' => $score,
+                        'geo_type' => 'state',
+                    ];
                 }
             }
         }
@@ -161,22 +168,22 @@ class DomainValuationService
         if (!$best) return null;
 
         return [
-            'city' => $best['city'],
-            'cityKey' => $best['cityKey'],
+            'location' => $best['location'],
+            'locationKey' => $best['locationKey'],
             'keyword' => $best['keyword'],
             'tld' => $tld,
+            'geo_type' => $best['geo_type'],
         ];
     }
 
     protected function knownCityLookup(): array
     {
         if (!$this->clickhouse->isConnected()) return [];
-        $cacheKey = 'cando_known_cities_v2';
+        $cacheKey = 'cando_known_cities_v3';
         $cache = \Illuminate\Support\Facades\Cache::get($cacheKey, []);
         if (!empty($cache)) return $cache;
 
         $map = [];
-        // From past sales
         $stmt = $this->clickhouse->query("SELECT DISTINCT city FROM domain_sales WHERE city != ''");
         if ($stmt) {
             foreach ($stmt->rows() as $row) {
@@ -184,7 +191,6 @@ class DomainValuationService
                 if ($norm !== '') $map[$norm] = $row['city'];
             }
         }
-        // From city population table
         $stmt2 = $this->clickhouse->query("SELECT DISTINCT city FROM city_population WHERE city != ''");
         if ($stmt2) {
             foreach ($stmt2->rows() as $row) {
@@ -198,15 +204,79 @@ class DomainValuationService
         return $map;
     }
 
+    protected function knownStateLookup(): array
+    {
+        if (!$this->clickhouse->isConnected()) return [];
+        $cacheKey = 'cando_known_states_v1';
+        $cache = \Illuminate\Support\Facades\Cache::get($cacheKey, []);
+        if (!empty($cache)) return $cache;
+
+        $map = [];
+        $stmt = $this->clickhouse->query("SELECT DISTINCT state FROM domain_sales WHERE state != ''");
+        if ($stmt) {
+            foreach ($stmt->rows() as $row) {
+                $norm = preg_replace('/[^a-z]/', '', strtolower($row['state']));
+                if ($norm !== '' && strlen($norm) >= 3) $map[$norm] = $row['state'];
+            }
+        }
+        $stmt2 = $this->clickhouse->query("SELECT DISTINCT state FROM city_population WHERE state != ''");
+        if ($stmt2) {
+            foreach ($stmt2->rows() as $row) {
+                $norm = preg_replace('/[^a-z]/', '', strtolower($row['state']));
+                if ($norm !== '' && strlen($norm) >= 3 && !isset($map[$norm])) $map[$norm] = $row['state'];
+            }
+        }
+        $states = [
+            'alabama' => 'Alabama', 'alaska' => 'Alaska', 'arizona' => 'Arizona',
+            'arkansas' => 'Arkansas', 'california' => 'California', 'colorado' => 'Colorado',
+            'connecticut' => 'Connecticut', 'delaware' => 'Delaware', 'florida' => 'Florida',
+            'georgia' => 'Georgia', 'hawaii' => 'Hawaii', 'idaho' => 'Idaho',
+            'illinois' => 'Illinois', 'indiana' => 'Indiana', 'iowa' => 'Iowa',
+            'kansas' => 'Kansas', 'kentucky' => 'Kentucky', 'louisiana' => 'Louisiana',
+            'maine' => 'Maine', 'maryland' => 'Maryland', 'massachusetts' => 'Massachusetts',
+            'michigan' => 'Michigan', 'minnesota' => 'Minnesota', 'mississippi' => 'Mississippi',
+            'missouri' => 'Missouri', 'montana' => 'Montana', 'nebraska' => 'Nebraska',
+            'nevada' => 'Nevada', 'newhampshire' => 'New Hampshire', 'newjersey' => 'New Jersey',
+            'newmexico' => 'New Mexico', 'newyork' => 'New York', 'northcarolina' => 'North Carolina',
+            'northdakota' => 'North Dakota', 'ohio' => 'Ohio', 'oklahoma' => 'Oklahoma',
+            'oregon' => 'Oregon', 'pennsylvania' => 'Pennsylvania', 'rhodeisland' => 'Rhode Island',
+            'southcarolina' => 'South Carolina', 'southdakota' => 'South Dakota', 'tennessee' => 'Tennessee',
+            'texas' => 'Texas', 'utah' => 'Utah', 'vermont' => 'Vermont',
+            'virginia' => 'Virginia', 'washington' => 'Washington', 'westvirginia' => 'West Virginia',
+            'wisconsin' => 'Wisconsin', 'wyoming' => 'Wyoming',
+            'ontario' => 'Ontario', 'quebec' => 'Quebec', 'britishcolumbia' => 'British Columbia',
+            'alberta' => 'Alberta', 'manitoba' => 'Manitoba', 'saskatchewan' => 'Saskatchewan',
+            'nova' => 'Nova Scotia',
+            'victoria' => 'Victoria', 'newsouthwales' => 'New South Wales', 'queensland' => 'Queensland',
+            'southaustralia' => 'South Australia', 'westernaustralia' => 'Western Australia',
+            'texas' => 'Texas',
+        ];
+        foreach ($states as $norm => $full) {
+            if (!isset($map[$norm])) $map[$norm] = $full;
+        }
+        if (!empty($map)) {
+            \Illuminate\Support\Facades\Cache::put($cacheKey, $map, 300);
+        }
+        return $map;
+    }
+
     // ==================== PAST SALES DATA ====================
 
-    protected function citySalesCount(string $cityKey): int
+    protected function locationSalesCount(string $locationKey, string $geoType): int
     {
         if (!$this->clickhouse->isConnected()) return 0;
-        $stmt = $this->clickhouse->query(
-            "SELECT count() as c FROM domain_sales WHERE replaceAll(lower(city), ' ', '') = :city",
-            ['city' => strtolower($cityKey)]
-        );
+
+        if ($geoType === 'state') {
+            $stmt = $this->clickhouse->query(
+                "SELECT count() as c FROM domain_sales WHERE replaceAll(lower(state), ' ', '') = :loc",
+                ['loc' => strtolower($locationKey)]
+            );
+        } else {
+            $stmt = $this->clickhouse->query(
+                "SELECT count() as c FROM domain_sales WHERE replaceAll(lower(city), ' ', '') = :loc",
+                ['loc' => strtolower($locationKey)]
+            );
+        }
         return $stmt ? (int) $stmt->fetchOne('c') : 0;
     }
 
@@ -220,29 +290,44 @@ class DomainValuationService
         return $stmt ? (int) $stmt->fetchOne('c') : 0;
     }
 
-    protected function exactMatchCount(string $cityKey, string $keyword): int
+    protected function exactMatchCount(string $locationKey, string $keyword, string $geoType): int
     {
         if (!$this->clickhouse->isConnected() || $keyword === '') return 0;
-        $stmt = $this->clickhouse->query(
-            "SELECT count() as c FROM domain_sales WHERE replaceAll(lower(city), ' ', '') = :city AND (lower(keyword) = :kw OR lower(domain_name) LIKE :like)",
-            ['city' => strtolower($cityKey), 'kw' => strtolower($keyword), 'like' => '%' . strtolower($keyword) . '%']
-        );
+
+        if ($geoType === 'state') {
+            $stmt = $this->clickhouse->query(
+                "SELECT count() as c FROM domain_sales WHERE replaceAll(lower(state), ' ', '') = :loc AND (lower(keyword) = :kw OR lower(domain_name) LIKE :like)",
+                ['loc' => strtolower($locationKey), 'kw' => strtolower($keyword), 'like' => '%' . strtolower($keyword) . '%']
+            );
+        } else {
+            $stmt = $this->clickhouse->query(
+                "SELECT count() as c FROM domain_sales WHERE replaceAll(lower(city), ' ', '') = :loc AND (lower(keyword) = :kw OR lower(domain_name) LIKE :like)",
+                ['loc' => strtolower($locationKey), 'kw' => strtolower($keyword), 'like' => '%' . strtolower($keyword) . '%']
+            );
+        }
         return $stmt ? (int) $stmt->fetchOne('c') : 0;
     }
 
-    protected function estimateFromComparables(string $cityKey, string $keyword): array
+    protected function estimateFromComparables(string $locationKey, string $keyword, string $geoType): array
     {
         if (!$this->clickhouse->isConnected()) return ['low' => 0, 'high' => 0, 'median' => 0];
 
-        $stmt = $this->clickhouse->query(
-            "SELECT price FROM domain_sales WHERE replaceAll(lower(city), ' ', '') = :city AND (lower(keyword) = :kw OR lower(domain_name) LIKE :like) LIMIT 100",
-            ['city' => strtolower($cityKey), 'kw' => strtolower($keyword), 'like' => '%' . strtolower($keyword) . '%']
-        );
+        if ($geoType === 'state') {
+            $stmt = $this->clickhouse->query(
+                "SELECT price FROM domain_sales WHERE replaceAll(lower(state), ' ', '') = :loc AND (lower(keyword) = :kw OR lower(domain_name) LIKE :like) LIMIT 100",
+                ['loc' => strtolower($locationKey), 'kw' => strtolower($keyword), 'like' => '%' . strtolower($keyword) . '%']
+            );
+        } else {
+            $stmt = $this->clickhouse->query(
+                "SELECT price FROM domain_sales WHERE replaceAll(lower(city), ' ', '') = :loc AND (lower(keyword) = :kw OR lower(domain_name) LIKE :like) LIMIT 100",
+                ['loc' => strtolower($locationKey), 'kw' => strtolower($keyword), 'like' => '%' . strtolower($keyword) . '%']
+            );
+        }
         if ($stmt) {
             $prices = array_map('floatval', array_column($stmt->rows(), 'price'));
             if (!empty($prices)) return $this->priceStats($prices);
         }
-        // fallback: keyword-only
+
         $stmt2 = $this->clickhouse->query(
             "SELECT price FROM domain_sales WHERE lower(keyword) = :kw OR lower(domain_name) LIKE :like LIMIT 100",
             ['kw' => strtolower($keyword), 'like' => '%' . strtolower($keyword) . '%']
@@ -254,19 +339,24 @@ class DomainValuationService
         return ['low' => 0, 'high' => 0, 'median' => 0];
     }
 
-    protected function comparableSales(string $cityKey, string $keyword): array
+    protected function comparableSales(string $locationKey, string $keyword, string $geoType): array
     {
         if (!$this->clickhouse->isConnected() || $keyword === '') return [];
 
-        // Exact city + keyword matches first
-        $stmt = $this->clickhouse->query(
-            "SELECT domain_name, price, city, keyword FROM domain_sales WHERE replaceAll(lower(city), ' ', '') = :city AND (lower(keyword) = :kw OR lower(domain_name) LIKE :like) LIMIT 50",
-            ['city' => strtolower($cityKey), 'kw' => strtolower($keyword), 'like' => '%' . strtolower($keyword) . '%']
-        );
+        if ($geoType === 'state') {
+            $stmt = $this->clickhouse->query(
+                "SELECT domain_name, price, city, keyword FROM domain_sales WHERE replaceAll(lower(state), ' ', '') = :loc AND (lower(keyword) = :kw OR lower(domain_name) LIKE :like) LIMIT 50",
+                ['loc' => strtolower($locationKey), 'kw' => strtolower($keyword), 'like' => '%' . strtolower($keyword) . '%']
+            );
+        } else {
+            $stmt = $this->clickhouse->query(
+                "SELECT domain_name, price, city, keyword FROM domain_sales WHERE replaceAll(lower(city), ' ', '') = :loc AND (lower(keyword) = :kw OR lower(domain_name) LIKE :like) LIMIT 50",
+                ['loc' => strtolower($locationKey), 'kw' => strtolower($keyword), 'like' => '%' . strtolower($keyword) . '%']
+            );
+        }
         $rows = $stmt ? $stmt->rows() : [];
 
         if (empty($rows)) {
-            // Fallback: keyword-only matches from past data
             $stmt2 = $this->clickhouse->query(
                 "SELECT domain_name, price, city, keyword FROM domain_sales WHERE lower(keyword) = :kw OR lower(domain_name) LIKE :like LIMIT 50",
                 ['kw' => strtolower($keyword), 'like' => '%' . strtolower($keyword) . '%']
@@ -295,15 +385,23 @@ class DomainValuationService
         return ['low' => $prices[0], 'high' => $prices[$count - 1], 'median' => $median];
     }
 
-    // ==================== CITY POPULATION TABLE ====================
+    // ==================== POPULATION TABLE ====================
 
-    protected function cityPopulation(string $cityKey): array
+    protected function locationPopulation(string $locationKey, string $geoType): array
     {
         if (!$this->clickhouse->isConnected()) return ['population' => 0, 'city' => '', 'state' => ''];
-        $stmt = $this->clickhouse->query(
-            "SELECT city, state, any(population) as pop FROM city_population WHERE replaceAll(lower(city), ' ', '') = :city GROUP BY city, state LIMIT 1",
-            ['city' => strtolower($cityKey)]
-        );
+
+        if ($geoType === 'state') {
+            $stmt = $this->clickhouse->query(
+                "SELECT state, any(population) as pop FROM city_population WHERE replaceAll(lower(state), ' ', '') = :loc GROUP BY state LIMIT 1",
+                ['loc' => strtolower($locationKey)]
+            );
+        } else {
+            $stmt = $this->clickhouse->query(
+                "SELECT city, state, any(population) as pop FROM city_population WHERE replaceAll(lower(city), ' ', '') = :loc GROUP BY city, state LIMIT 1",
+                ['loc' => strtolower($locationKey)]
+            );
+        }
         if (!$stmt) return ['population' => 0, 'city' => '', 'state' => ''];
         $row = $stmt->fetchOne();
         return [
@@ -315,12 +413,12 @@ class DomainValuationService
 
     // ==================== SCORING ====================
 
-    protected function salesScore(int $citySales, int $keywordSales): int
+    protected function salesScore(int $locationSales, int $keywordSales): int
     {
-        // Past sales demand. City sales = proven local demand; keyword = proven industry demand.
         $score = 0;
-        if ($citySales >= 3) $score += 25;
-        elseif ($citySales >= 1) $score += 12;
+        if ($locationSales >= 5) $score += 25;
+        elseif ($locationSales >= 3) $score += 18;
+        elseif ($locationSales >= 1) $score += 10;
 
         if ($keywordSales >= 10) $score += 30;
         elseif ($keywordSales >= 5) $score += 22;
@@ -330,14 +428,24 @@ class DomainValuationService
         return min(55, $score);
     }
 
-    protected function populationScore(int $population): int
+    protected function populationScore(int $population, string $geoType = 'city'): int
     {
-        if ($population >= 10000000) return 40;   // mega metro
+        if ($geoType === 'state') {
+            if ($population >= 20000000) return 40;
+            if ($population >= 15000000) return 36;
+            if ($population >= 10000000) return 32;
+            if ($population >= 5000000) return 27;
+            if ($population >= 2000000) return 20;
+            if ($population >= 1000000) return 13;
+            return 8;
+        }
+
+        if ($population >= 10000000) return 40;
         if ($population >= 5000000) return 34;
-        if ($population >= 1000000) return 27;    // big city
+        if ($population >= 1000000) return 27;
         if ($population >= 500000) return 20;
-        if ($population >= 100000) return 13;     // small city
-        if ($population >= 50000) return 8;       // town
+        if ($population >= 100000) return 13;
+        if ($population >= 50000) return 8;
         return 0;
     }
 
@@ -353,6 +461,18 @@ class DomainValuationService
         return 'Small Town';
     }
 
+    protected function stateRatingLabel(int $population, bool $hasPopulation): string
+    {
+        if (!$hasPopulation) return 'No population record';
+        if ($population >= 20000000) return 'Mega State';
+        if ($population >= 15000000) return 'Very Large State';
+        if ($population >= 10000000) return 'Large State';
+        if ($population >= 5000000) return 'Medium State';
+        if ($population >= 2000000) return 'Small State';
+        if ($population >= 1000000) return 'Tiny State';
+        return 'Small State';
+    }
+
     protected function keywordDemandLabel(int $keywordSales): string
     {
         if ($keywordSales >= 10) return 'Very High Demand';
@@ -362,27 +482,26 @@ class DomainValuationService
         return 'No sales yet';
     }
 
-    protected function buildNote(string $city, string $keyword, int $citySales, int $keywordSales, int $exactMatches, int $population, bool $hasPopulation): string
+    protected function buildNote(string $location, string $keyword, int $locationSales, int $keywordSales, int $exactMatches, int $population, bool $hasPopulation, string $geoType): string
     {
         $parts = [];
+        $locType = $geoType === 'state' ? 'State' : 'City';
 
-        // City / population
         if ($hasPopulation) {
-            $parts[] = $city . ' has a population of ~' . number_format($population) .
-                ' (' . $this->cityRatingLabel($population, true) . '). A bigger city means more buyers, so a higher chance this domain sells.';
+            $parts[] = $location . ' has a population of ~' . number_format($population) .
+                ' (' . ($geoType === 'state' ? $this->stateRatingLabel($population, true) : $this->cityRatingLabel($population, true)) . '). A bigger ' . strtolower($locType) . ' means more buyers, so a higher chance this domain sells.';
         } else {
-            $parts[] = $city . ' has no population record yet - add it to the city population table for better analysis.';
+            $parts[] = $location . ' has no population record yet - add it to the population table for better analysis.';
         }
 
-        // Keyword / past sales
         $parts[] = 'The keyword "' . $keyword . '" has sold ' . $keywordSales . ' time(s) in past sales.';
-        if ($citySales > 0) {
-            $parts[] = 'Domains for ' . $city . ' have sold ' . $citySales . ' time(s) in the past.';
+        if ($locationSales > 0) {
+            $parts[] = 'Domains for ' . $location . ' have sold ' . $locationSales . ' time(s) in the past.';
         } else {
-            $parts[] = 'No past sales recorded for ' . $city . ' yet.';
+            $parts[] = 'No past sales recorded for ' . $location . ' yet.';
         }
         if ($exactMatches > 0) {
-            $parts[] = 'This exact city + keyword combo has ' . $exactMatches . ' past sale(s).';
+            $parts[] = 'This exact ' . strtolower($locType) . ' + keyword combo has ' . $exactMatches . ' past sale(s).';
         }
 
         return implode(' ', $parts);
@@ -394,7 +513,7 @@ class DomainValuationService
             'success' => $success,
             'message' => $message,
             'is_geo' => true,
-            'warning' => 'This tool ONLY analyzes GEO domains. It uses our PAST SALES data and our CITY POPULATION table. Everything is an ESTIMATE, NOT guaranteed.',
+            'warning' => 'This tool ONLY analyzes GEO domains. It uses our PAST SALES data and our population table. Everything is an ESTIMATE, NOT guaranteed.',
         ], $data);
     }
 }

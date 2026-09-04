@@ -13,13 +13,13 @@ class ClickHouseService
     {
         try {
             $this->client = new Client([
-                'host' => env('CLICKHOUSE_HOST', '127.0.0.1'),
-                'port' => env('CLICKHOUSE_PORT', 8123),
-                'username' => env('CLICKHOUSE_USER', 'default'),
-                'password' => env('CLICKHOUSE_PASSWORD', ''),
+                'host' => config('database.connections.clickhouse.host', '127.0.0.1'),
+                'port' => config('database.connections.clickhouse.port', 8123),
+                'username' => config('database.connections.clickhouse.username', 'default'),
+                'password' => config('database.connections.clickhouse.password', ''),
             ]);
 
-            $this->client->database(env('CLICKHOUSE_DATABASE', 'databasegeo'));
+            $this->client->database(config('database.connections.clickhouse.database', 'databasegeo'));
 
             $this->client->select('SELECT 1');
             $this->connected = true;
@@ -46,7 +46,7 @@ class ClickHouseService
         try {
             $stmt = $this->client->select($sql, $params);
 
-            $stmt->countAll();
+            try { $stmt->countAll(); } catch (\Exception $ignored) {}
 
             return $stmt;
         } catch (\Exception $e) {

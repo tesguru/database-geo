@@ -8,6 +8,8 @@ use App\Services\DomainSearchService;
 use App\Services\DomainValuationService;
 use Illuminate\Http\Request;
 
+use Database\Seeders\StatePopulationSeeder;
+
 class AdminController extends Controller
 {
     protected ClickHouseService $clickhouse;
@@ -249,10 +251,11 @@ class AdminController extends Controller
     protected function domainExists(string $domain): bool
     {
         $domain = strtolower(trim($domain));
-        $row = $this->clickhouse->query(
+        $stmt = $this->clickhouse->query(
             "SELECT 1 FROM domain_sales WHERE lower(domain_name) = :d LIMIT 1",
             ['d' => $domain]
-        )->rows();
+        );
+        $row = $stmt ? $stmt->rows() : [];
 
         return !empty($row);
     }
@@ -449,5 +452,11 @@ class AdminController extends Controller
         }
 
         return 'Sample data seeding complete. ' . $inserted . ' sale(s) added, ' . $skipped . ' duplicate(s) skipped.';
+    }
+
+    public function seedStatePopulations()
+    {
+        $result = StatePopulationSeeder::run($this->clickhouse);
+        return redirect()->route('admin.populations')->with('success', $result);
     }
 }

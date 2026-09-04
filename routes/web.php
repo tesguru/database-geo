@@ -33,6 +33,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/admin/populations/bulk', [AdminController::class, 'bulkPopulation'])->name('admin.populations.bulk');
         Route::post('/admin/populations/seed', [AdminController::class, 'seedPopulations'])->name('admin.populations.seed');
         Route::delete('/admin/populations/{id}', [AdminController::class, 'destroyPopulation'])->name('admin.populations.destroy');
+        Route::post('/admin/populations/seed-states', [AdminController::class, 'seedStatePopulations'])->name('admin.populations.seed-states');
 
         Route::get('/admin/users', [AdminController::class, 'users'])->name('admin.users');
     });
