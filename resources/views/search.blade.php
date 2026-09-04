@@ -234,14 +234,7 @@
                                         ${{ number_format($sale['price'], 2) }}
                                     </span>
                                 </td>
-                                <td class="px-6 py-4">
-                                    @if($val && !empty($val['has_estimate']) && $val['estimated_value'] > 0)
-                                    <div class="text-sm font-semibold text-white">${{ number_format($val['estimated_value'], 0) }}</div>
-                                    <div class="text-[11px] text-gray-500">${{ number_format($val['estimate_low'], 0) }} – ${{ number_format($val['estimate_high'], 0) }}</div>
-                                    @else
-                                    <span class="text-gray-600 text-xs">Not enough data</span>
-                                    @endif
-                                </td>
+                            
                                 <td class="px-6 py-4">
                                     @if($val && !empty($val['success']) && isset($val['chance']))
                                         @php $p = (int) $val['chance']; @endphp
