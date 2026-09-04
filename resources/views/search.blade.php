@@ -196,7 +196,6 @@
                                 <th class="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Keyword</th>
                                 <th class="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Location</th>
                                 <th class="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Sale Price</th>
-                                <th class="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Est. Value</th>
                                 <th class="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Chance to Sell</th>
                                 <th class="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Action</th>
                             </tr>

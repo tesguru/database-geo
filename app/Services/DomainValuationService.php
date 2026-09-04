@@ -127,42 +127,32 @@ class DomainValuationService
         $best = null;
         $len = strlen($base);
 
+        $register = function (string $locPart, string $kwPart, string $displayName, string $geoType) use (&$best) {
+            if (strlen($locPart) < 2 || strlen($kwPart) < 3) return;
+            $keywordSales = $this->keywordSalesCount($kwPart);
+            $score = ($geoType === 'state' ? 70 : 60) + strlen($locPart);
+            if ($keywordSales > 0) $score += 30;
+
+            if ($best === null || $score > $best['score']) {
+                $best = [
+                    'location' => $displayName,
+                    'locationKey' => $locPart,
+                    'keyword' => $kwPart,
+                    'score' => $score,
+                    'geo_type' => $geoType,
+                ];
+            }
+        };
+
         for ($i = 1; $i < $len; $i++) {
-            $locPart = substr($base, 0, $i);
-            $kwPart = substr($base, $i);
-            if (strlen($locPart) < 2 || strlen($kwPart) < 3) continue;
+            $head = substr($base, 0, $i);
+            $tail = substr($base, $i);
 
-            if (isset($knownCities[$locPart])) {
-                $keywordSales = $this->keywordSalesCount($kwPart);
-                $score = 60 + strlen($locPart);
-                if ($keywordSales > 0) $score += 30;
+            if (isset($knownCities[$head])) $register($head, $tail, $knownCities[$head], 'city');
+            if (isset($knownStates[$head])) $register($head, $tail, $knownStates[$head], 'state');
 
-                if ($best === null || $score > $best['score']) {
-                    $best = [
-                        'location' => $knownCities[$locPart],
-                        'locationKey' => $locPart,
-                        'keyword' => $kwPart,
-                        'score' => $score,
-                        'geo_type' => 'city',
-                    ];
-                }
-            }
-
-            if (isset($knownStates[$locPart])) {
-                $keywordSales = $this->keywordSalesCount($kwPart);
-                $score = 70 + strlen($locPart);
-                if ($keywordSales > 0) $score += 30;
-
-                if ($best === null || $score > $best['score']) {
-                    $best = [
-                        'location' => $knownStates[$locPart],
-                        'locationKey' => $locPart,
-                        'keyword' => $kwPart,
-                        'score' => $score,
-                        'geo_type' => 'state',
-                    ];
-                }
-            }
+            if (isset($knownCities[$tail])) $register($tail, $head, $knownCities[$tail], 'city');
+            if (isset($knownStates[$tail])) $register($tail, $head, $knownStates[$tail], 'state');
         }
 
         if (!$best) return null;
