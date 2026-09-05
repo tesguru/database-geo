@@ -98,6 +98,31 @@
                     </table>
                 </div>
             </div>
+
+            @if(($results['last_page'] ?? 1) > 1)
+            <div class="mt-6 flex items-center justify-center gap-2">
+                @php $q = ['page' => 1]; @endphp
+                <a href="{{ route('admin.sales', $q) }}"
+                   class="{{ $results['page'] == 1 ? 'opacity-40 pointer-events-none' : '' }} px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-sm font-medium text-gray-300 hover:bg-gray-700 transition">
+                    &laquo;
+                </a>
+                @php $start = max(1, $results['page'] - 2); $end = min($results['last_page'], $results['page'] + 2); @endphp
+                @for($p = $start; $p <= $end; $p++)
+                    <a href="{{ route('admin.sales', ['page' => $p]) }}"
+                       class="{{ $p == $results['page'] ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white border-transparent' : 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700' }} px-4 py-2 rounded-lg border text-sm font-medium transition">
+                        {{ $p }}
+                    </a>
+                @endfor
+                @php $q = ['page' => $results['last_page']]; @endphp
+                <a href="{{ route('admin.sales', $q) }}"
+                   class="{{ $results['page'] == $results['last_page'] ? 'opacity-40 pointer-events-none' : '' }} px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-sm font-medium text-gray-300 hover:bg-gray-700 transition">
+                    &raquo;
+                </a>
+            </div>
+            <p class="mt-3 text-center text-sm text-gray-500">
+                Page {{ $results['page'] }} of {{ max($results['last_page'], 1) }} · {{ number_format($results['total']) }} sales total
+            </p>
+            @endif
         </div>
     </div>
 </x-app-layout>

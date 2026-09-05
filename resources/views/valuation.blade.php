@@ -19,7 +19,7 @@
                     <span class="text-yellow-400 mt-0.5">⚠️</span>
                     <p class="text-sm text-yellow-200">
                         This tool <strong>ONLY analyzes GEO domains</strong> (a city or state + keyword + TLD, e.g. <span class="font-mono">losangeleshomes.com</span> or <span class="font-mono">floridahousesales.com</span>).
-                        The result is an <strong>estimate</strong> based on population and how many times the keyword has sold in our data. It is <strong>NOT guaranteed</strong>.
+                        The result compares the location and keyword against our past sales data and is <strong>NOT guaranteed</strong>.
                     </p>
                 </div>
 
@@ -115,22 +115,7 @@
                     </div>
                 </div>
 
-                <!-- Estimated value -->
                 <div class="px-6 pb-6">
-                    @if(!empty($result['has_estimate']) && $result['estimated_value'] > 0)
-                    <div class="bg-emerald-900/20 border border-emerald-800/40 rounded-xl p-5">
-                        <p class="text-xs text-emerald-300 uppercase tracking-wider">Estimated Value (from comparable past sales)</p>
-                        <div class="flex items-end gap-4 mt-2 flex-wrap">
-                            <p class="text-3xl font-bold text-emerald-400">${{ number_format($result['estimated_value'], 0) }}</p>
-                            <p class="text-sm text-emerald-200">range ${{ number_format($result['estimate_low'], 0) }} – ${{ number_format($result['estimate_high'], 0) }}</p>
-                        </div>
-                    </div>
-                    @else
-                    <div class="bg-gray-800/40 border border-gray-700 rounded-xl p-5">
-                        <p class="text-sm text-gray-400">Could not estimate a value yet — no comparable {{ ($result['geo_type'] ?? 'city') === 'state' ? 'state' : 'city' }} + keyword sales in our data.</p>
-                    </div>
-                    @endif
-
                     <!-- Domains in our past data -->
                     @if(!empty($result['comparables']))
                     <div class="mt-5 bg-gray-800/40 border border-gray-700 rounded-xl p-5">

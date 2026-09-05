@@ -49,9 +49,11 @@ class AdminController extends Controller
         return view('admin.users', ['users' => $users]);
     }
 
-    public function sales()
+    public function sales(Request $request)
     {
-        $results = $this->searchService->search([], 1, 50, 'id', 'desc');
+        $page = (int) $request->input('page', 1);
+        $perPage = (int) $request->input('per_page', 25);
+        $results = $this->searchService->search([], $page, $perPage, 'id', 'desc');
         return view('admin.sales', ['results' => $results]);
     }
 

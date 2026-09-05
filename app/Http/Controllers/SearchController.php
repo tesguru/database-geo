@@ -62,6 +62,15 @@ class SearchController extends Controller
             $valuations = $this->valuationService->valueMany($results['data']);
         }
 
+        if ($request->boolean('ajax')) {
+            return response()->json([
+                'html' => view('search.partials.results', [
+                    'results' => $results,
+                    'valuations' => $valuations,
+                ])->render(),
+            ]);
+        }
+
         if ($request->expectsJson()) {
             return response()->json(['results' => $results, 'valuations' => $valuations]);
         }
