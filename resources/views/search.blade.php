@@ -4,8 +4,7 @@
     @endphp
     <div class="min-h-screen">
         <!-- Hero Section (only on landing, no active search) -->
-        @unless($hasSearch)
-        <div class="relative overflow-hidden bg-gray-900 border-b border-gray-800">
+        <div id="landing-hero" class="relative overflow-hidden bg-gray-900 border-b border-gray-800 {{ $hasSearch ? 'hidden' : '' }}">
             <div class="absolute inset-0 opacity-20">
                 <div class="absolute top-0 left-0 w-96 h-96 bg-indigo-600 rounded-full blur-3xl"></div>
                 <div class="absolute bottom-0 right-0 w-128 h-128 bg-purple-600 rounded-full blur-3xl"></div>
@@ -80,9 +79,8 @@
                 </div>
             </div>
         </div>
-        @else
         <!-- Compact search bar (shown when a search is active) -->
-        <div class="bg-gray-900 border-b border-gray-800">
+        <div id="compact-bar" class="bg-gray-900 border-b border-gray-800 {{ $hasSearch ? '' : 'hidden' }}">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
                 <form method="GET" action="{{ route('search') }}" class="flex flex-col lg:flex-row gap-3">
                     <div class="flex-1 relative">
@@ -111,7 +109,6 @@
                 </form>
             </div>
         </div>
-        @endunless
 
         <!-- Valuation Notice -->
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
@@ -199,6 +196,14 @@
             content.classList.remove('hidden');
         }
 
+        function syncHeader() {
+            const hero = document.getElementById('landing-hero');
+            const compact = document.getElementById('compact-bar');
+            const hasParams = window.location.search.length > 0;
+            if (hero) hero.classList.toggle('hidden', hasParams);
+            if (compact) compact.classList.toggle('hidden', !hasParams);
+        }
+
         async function loadSearch(url) {
             const u = new URL(url, window.location.origin);
             u.searchParams.set('ajax', '1');
@@ -214,6 +219,7 @@
                 }
                 const clean = u.toString().replace(/[?&]ajax=1/, '').replace(/[?&]ajax=1&/, '&');
                 history.pushState({}, '', clean);
+                syncHeader();
                 requestAnimationFrame(() => {
                     const top = content.getBoundingClientRect().top + window.scrollY - 20;
                     window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
@@ -247,6 +253,7 @@
         });
 
         window.addEventListener('popstate', function () {
+            syncHeader();
             loadSearch(window.location.href);
         });
     });

@@ -38,6 +38,26 @@
                 </div>
             </div>
 
+            <form method="GET" action="{{ route('admin.sales') }}" class="mb-6 flex flex-wrap items-center gap-3">
+                <div class="flex-1 min-w-[220px] relative">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <svg class="h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                        </svg>
+                    </div>
+                    <input type="text" name="keyword" value="{{ request('keyword') }}" placeholder="Search domain, keyword, city, state..."
+                        class="w-full pl-10 pr-4 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-sm">
+                </div>
+                <button type="submit" class="px-4 py-2.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition text-sm font-medium">
+                    Search
+                </button>
+                @if(request('keyword'))
+                <a href="{{ route('admin.sales') }}" class="px-4 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-gray-300 hover:bg-gray-700 transition text-sm font-medium">
+                    Clear
+                </a>
+                @endif
+            </form>
+
             <div class="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-800">
@@ -101,19 +121,20 @@
 
             @if(($results['last_page'] ?? 1) > 1)
             <div class="mt-6 flex items-center justify-center gap-2">
-                @php $q = ['page' => 1]; @endphp
+                @php $q = array_merge(request()->except(['page']), ['page' => 1]); @endphp
                 <a href="{{ route('admin.sales', $q) }}"
                    class="{{ $results['page'] == 1 ? 'opacity-40 pointer-events-none' : '' }} px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-sm font-medium text-gray-300 hover:bg-gray-700 transition">
                     &laquo;
                 </a>
                 @php $start = max(1, $results['page'] - 2); $end = min($results['last_page'], $results['page'] + 2); @endphp
                 @for($p = $start; $p <= $end; $p++)
-                    <a href="{{ route('admin.sales', ['page' => $p]) }}"
+                    @php $q = array_merge(request()->except(['page']), ['page' => $p]); @endphp
+                    <a href="{{ route('admin.sales', $q) }}"
                        class="{{ $p == $results['page'] ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white border-transparent' : 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700' }} px-4 py-2 rounded-lg border text-sm font-medium transition">
                         {{ $p }}
                     </a>
                 @endfor
-                @php $q = ['page' => $results['last_page']]; @endphp
+                @php $q = array_merge(request()->except(['page']), ['page' => $results['last_page']]); @endphp
                 <a href="{{ route('admin.sales', $q) }}"
                    class="{{ $results['page'] == $results['last_page'] ? 'opacity-40 pointer-events-none' : '' }} px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-sm font-medium text-gray-300 hover:bg-gray-700 transition">
                     &raquo;

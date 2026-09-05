@@ -53,7 +53,8 @@ class AdminController extends Controller
     {
         $page = (int) $request->input('page', 1);
         $perPage = (int) $request->input('per_page', 25);
-        $results = $this->searchService->search([], $page, $perPage, 'id', 'desc');
+        $filters = $request->only(['keyword']);
+        $results = $this->searchService->search($filters, $page, $perPage, 'id', 'desc');
         return view('admin.sales', ['results' => $results]);
     }
 
