@@ -22,6 +22,10 @@
                     </x-nav-link>
 
                     @auth
+                    <x-nav-link :href="route('analytics')" :active="request()->routeIs('analytics')">
+                        {{ __('Analytics') }}
+                    </x-nav-link>
+
                     @if(Auth::user()->isAdmin())
                     <x-nav-link :href="route('admin.dashboard')" :active="request()->routeIs('admin.*')">
                         {{ __('Admin') }}
@@ -95,6 +99,10 @@
             </x-responsive-nav-link>
 
             @auth
+            <x-responsive-nav-link :href="route('analytics')" :active="request()->routeIs('analytics')">
+                {{ __('Analytics') }}
+            </x-responsive-nav-link>
+
             @if(Auth::user()->isAdmin())
             <x-responsive-nav-link :href="route('admin.dashboard')" :active="request()->routeIs('admin.*')">
                 {{ __('Admin') }}

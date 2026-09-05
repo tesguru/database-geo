@@ -146,4 +146,97 @@ class DomainSearchService
         $result = $this->clickhouse->query($sql, ['limit' => $limit]);
         return $result ? $result->rows() : [];
     }
+
+    public function topKeywords(int $limit = 50): array
+    {
+        if (!$this->clickhouse->isConnected()) {
+            return ['items' => [], 'total_sales' => 0];
+        }
+
+        $stmt = $this->clickhouse->query(
+            "SELECT keyword,
+                    count() AS sales_count,
+                    uniqExact(city) AS cities_count
+             FROM domain_sales
+             WHERE keyword != ''
+             GROUP BY keyword
+             ORDER BY sales_count DESC
+             LIMIT :limit",
+            ['limit' => (int) $limit]
+        );
+
+        $total = $this->clickhouse->query("SELECT count() AS sales_count FROM domain_sales WHERE keyword != ''");
+
+        return [
+            'items' => $stmt ? $stmt->rows() : [],
+            'total_sales' => (int) ($total ? $total->fetchOne('sales_count') : 0),
+        ];
+    }
+
+    public function topCities(int $limit = 50): array
+    {
+        if (!$this->clickhouse->isConnected()) {
+            return ['items' => [], 'total_sales' => 0];
+        }
+
+        $stmt = $this->clickhouse->query(
+            "SELECT city,
+                    state,
+                    count() AS sales_count
+             FROM domain_sales
+             WHERE city != ''
+             GROUP BY city, state
+             ORDER BY sales_count DESC
+             LIMIT :limit",
+            ['limit' => (int) $limit]
+        );
+
+        $total = $this->clickhouse->query("SELECT count() AS sales_count FROM domain_sales WHERE city != ''");
+
+        return [
+            'items' => $stmt ? $stmt->rows() : [],
+            'total_sales' => (int) ($total ? $total->fetchOne('sales_count') : 0),
+        ];
+    }
+
+    public function premiumSales(int $limit = 20): array
+    {
+        if (!$this->clickhouse->isConnected()) return [];
+
+        $stmt = $this->clickhouse->query(
+            "SELECT domain_name, price, keyword, city, state
+             FROM domain_sales
+             ORDER BY price DESC
+             LIMIT :limit",
+            ['limit' => (int) $limit]
+        );
+        return $stmt ? $stmt->rows() : [];
+    }
+
+    public function averagePriceByKeyword(int $limit = 30): array
+    {
+        if (!$this->clickhouse->isConnected()) return ['items' => [], 'total' => 0];
+
+        $stmt = $this->clickhouse->query(
+            "SELECT keyword,
+                    count() AS sales_count,
+                    avg(price) AS avg_price,
+                    min(price) AS min_price,
+                    max(price) AS max_price
+             FROM domain_sales
+             WHERE keyword != '' AND price > 0
+             GROUP BY keyword
+             HAVING count() >= 2
+             ORDER BY avg_price DESC
+             LIMIT :limit",
+            ['limit' => (int) $limit]
+        );
+
+        $total = $this->clickhouse->query("SELECT count() AS sales_count FROM domain_sales WHERE keyword != '' AND price > 0");
+
+        return [
+            'items' => $stmt ? $stmt->rows() : [],
+            'total' => (int) ($total ? $total->fetchOne('sales_count') : 0),
+        ];
+    }
 }
